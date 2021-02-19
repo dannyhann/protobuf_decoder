@@ -1,6 +1,6 @@
 import pytest
 import logging
-from protobuf_decoder import Utils, Parser, ParsedResult
+from protobuf_decoder.protobuf_decoder import Utils, Parser, ParsedResult
 
 
 def test_binary_validate():
