@@ -89,10 +89,6 @@ class BytesBuffer:
     def append(self, byte_string):
         self._buffer.append(byte_string)
 
-    @property
-    def buffered_data(self):
-        return self._buffer
-
     def flush(self):
         self._buffer = []
 
@@ -106,6 +102,7 @@ class Fetcher:
         self.fetch_index = 0
 
     def set_data_length(self, data_length):
+        self.valid(data_length)
         self.data_length = data_length
 
     @staticmethod

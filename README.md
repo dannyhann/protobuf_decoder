@@ -1,3 +1,5 @@
+![Test Coverage](coverage.svg)
+
 # Protobuf Decoder
 Simple protobuf decoder for python
 

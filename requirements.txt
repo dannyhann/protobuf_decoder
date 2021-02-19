@@ -1,4 +1,6 @@
 attrs==20.3.0
+coverage==5.4
+coverage-badge==1.0.1
 iniconfig==1.1.1
 packaging==20.9
 pluggy==0.13.1
