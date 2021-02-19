@@ -8,7 +8,7 @@ Simple protobuf decoder for python
 The goal of this project is decode protobuf binary without proto files
 
 
-# A Simple Example
+# Simple Examples
 ```
 """
     # proto
