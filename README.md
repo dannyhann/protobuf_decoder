@@ -7,6 +7,10 @@ Simple protobuf decoder for python
 # Motivation
 The goal of this project is decode protobuf binary without proto files
 
+# Installation
+Install using pip
+
+`pip install protobuf-decoder`
 
 # Simple Examples
 ```
