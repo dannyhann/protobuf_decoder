@@ -63,3 +63,28 @@ parsed_data = Parser().parse(test_target)
 >> parsed_data
 >> [ParsedResult(field=3, wire_type="length_delimited", data=[ParsedResult(field=1, wire_type="varint", data=150)])]
 ```
+
+```
+"""
+    # proto
+    message Test1 {
+      required string a = 1;
+    }
+
+    # message
+    {
+      "a": "✊"
+    }
+
+    # binary
+    0A 03 E2 9C 8A
+
+    """
+test_target = "0A 03 E2 9C 8A"
+parsed_data = Parser().parse(test_target)
+>> parsed_data
+>> [ParsedResult(field=1, wire_type="string", data='✊')]
+```
+
+# Reference
+- [Google protocol-buffers encoding document](https://developers.google.com/protocol-buffers/docs/encoding)
