@@ -166,7 +166,7 @@ class Parser:
                 self.state = State.PARSE_VARINT
             elif wire_type == WireType.LENGTH_DELIMITED.value:
                 self.state = State.PARSE_LENGTH_DELIMITED
-            elif wire_type == (WireType.BIT32.value, WireType.BIT64.value,
+            elif wire_type in (WireType.BIT32.value, WireType.BIT64.value,
                                WireType.END_GROUP.value, WireType.START_GROUP.value):
                 raise ValueError(f"Unsupported wire type {wire_type}")
             else:
