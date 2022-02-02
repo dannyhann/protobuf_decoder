@@ -1,6 +1,5 @@
 import pytest
-import logging
-from protobuf_decoder.protobuf_decoder import Utils, Parser, ParsedResult
+from protobuf_decoder.protobuf_decoder import Utils, Parser, ParsedResult, ParsedResults
 
 
 def test_binary_validate():
@@ -69,7 +68,7 @@ def test_parse():
 
     test_target = "80 01 01"
     parsed_data = Parser().parse(test_target)
-    assert parsed_data == [ParsedResult(field=16, wire_type="varint", data=1)]
+    assert parsed_data == ParsedResults([ParsedResult(field=16, wire_type="varint", data=1)])
     assert ParsedResult(field=16, wire_type="varint", data=1).to_dict() == dict(field=16, wire_type="varint", data=1)
 
 
@@ -93,8 +92,8 @@ def test_parse2():
 
     test_target = "08 96 01 12 04 74 65 73 74"
     parsed_data = Parser().parse(test_target)
-    assert parsed_data == [ParsedResult(field=1, wire_type="varint", data=150),
-                           ParsedResult(field=2, wire_type="string", data='test')]
+    assert parsed_data == ParsedResults([ParsedResult(field=1, wire_type="varint", data=150),
+                                         ParsedResult(field=2, wire_type="string", data='test')])
 
 
 def test_parse3():
@@ -114,7 +113,7 @@ def test_parse3():
     """
     test_target = "12 07 74 65 73 74 69 6e 67"
     parsed_data = Parser().parse(test_target)
-    assert parsed_data == [ParsedResult(field=2, wire_type="string", data='testing')]
+    assert parsed_data == ParsedResults([ParsedResult(field=2, wire_type="string", data='testing')])
 
 
 def test_parser4():
@@ -140,10 +139,9 @@ def test_parser4():
     """
     test_target = "1a 03 08 96 01"
     parsed_data = Parser().parse(test_target)
-    assert parsed_data == [
-        ParsedResult(field=3, wire_type="length_delimited", data=[
-            ParsedResult(field=1, wire_type="varint", data=150)
-        ])]
+    assert parsed_data == ParsedResults(
+        [ParsedResult(field=3, wire_type="length_delimited", data=ParsedResults(
+            [ParsedResult(field=1, wire_type="varint", data=150)]))])
 
 
 def test_parser5():
@@ -163,7 +161,7 @@ def test_parser5():
     """
     test_target = "0A 09 ED 85 8C EC 8A A4 ED 8A B8"
     parsed_data = Parser().parse(test_target)
-    assert parsed_data == [ParsedResult(field=1, wire_type="string", data='테스트')]
+    assert parsed_data == ParsedResults([ParsedResult(field=1, wire_type="string", data='테스트')])
 
 
 def test_parser6():
@@ -172,7 +170,7 @@ def test_parser6():
     """
     test_target = " ".join(['ed', '85', '8c', 'ec', '8a', 'a4', 'ed', '8a', 'b8'])
     parsed_data = Parser().parse(test_target)
-    assert bool(parsed_data) is False
+    assert parsed_data.has_results is False
 
 
 def test_parser7():
@@ -193,7 +191,7 @@ def test_parser7():
     """
     test_target = "0A 03 E2 9C 8A"
     parsed_data = Parser().parse(test_target)
-    assert parsed_data == [ParsedResult(field=1, wire_type="string", data='✊')]
+    assert parsed_data == ParsedResults([ParsedResult(field=1, wire_type="string", data='✊')])
 
 
 def test_parser8():
@@ -217,7 +215,7 @@ def test_parser8():
     """
     test_target = "0A 04 74 65 73 74 0A 05 74 65 73 74 32"
     parsed_data = Parser().parse(test_target)
-    assert parsed_data == [
+    assert parsed_data == ParsedResults([
         ParsedResult(field=1, wire_type="string", data='test'),
         ParsedResult(field=1, wire_type="string", data='test2')
-    ]
+    ])

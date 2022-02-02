@@ -8,11 +8,19 @@ from dataclasses import dataclass
 HEX_PATTERN = "^[\\0-9a-fA-F\\s]+$"
 
 
-@dataclass
+@dataclass(init=False)
 class ParsedResult:
     field: int
     wire_type: str
     data: Union[str, int, List[ParsedResult]]
+
+    def __init__(self, field: int, wire_type: str, data: Union[str, int, ParsedResults]):
+        self.field = field
+        self.wire_type = wire_type
+        if isinstance(data, ParsedResults):
+            self.data = data.results
+        else:
+            self.data = data
 
     def to_dict(self):
         if isinstance(self.data, list):
@@ -25,6 +33,15 @@ class ParsedResult:
             wire_type=self.wire_type,
             data=data
         )
+
+
+@dataclass
+class ParsedResults:
+    results: List[ParsedResult]
+
+    @property
+    def has_results(self):
+        return len(self.results) > 0
 
 
 class State(Enum):
@@ -215,7 +232,7 @@ class Parser:
             self.buffer.append(value)
             data = list(map(lambda x: hex(x)[2:].zfill(2), self.buffer))
             sub_parsed_date = Parser().parse(" ".join(data))
-            if sub_parsed_date:
+            if sub_parsed_date.has_results:
                 data = sub_parsed_date
                 wire_type = "length_delimited"
             else:
@@ -233,7 +250,7 @@ class Parser:
             self.fetcher.seek()
             self.state = State.FIND_FIELD
 
-    def parse(self, test_target):
+    def parse(self, test_target) -> ParsedResults:
         is_valid, validate_string = Utils.validate(test_target)
         if not is_valid:
             raise ValueError("Invalid hex format")
@@ -254,8 +271,8 @@ class Parser:
                 self.get_delimited_data_handler(chunk)
 
             elif self.state == State.TERMINATED:
-                return self.parsed_data
+                return ParsedResults(self.parsed_data)
             else:
                 raise ValueError(f"Unsupported State {self.state}")
 
-        return self.parsed_data
+        return ParsedResults(self.parsed_data)
