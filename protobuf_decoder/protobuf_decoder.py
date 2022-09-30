@@ -218,8 +218,17 @@ class Parser:
             data_length = self.get_buffered_value()
             self.fetcher.set_data_length(data_length)
 
-            self.state = State.GET_DELIMITED_DATA
-
+            if data_length > 0:
+                self.state = State.GET_DELIMITED_DATA
+            else:
+                self.parsed_data.append(
+                    ParsedResult(
+                        field=self.target_field,
+                        wire_type="string",
+                        data=""
+                    )
+                )
+                self.state = State.FIND_FIELD
             self.buffer.flush()
 
     def get_delimited_data_handler(self, chunk):
