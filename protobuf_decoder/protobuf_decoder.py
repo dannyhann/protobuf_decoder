@@ -209,6 +209,17 @@ class Parser:
             self.state = State.FIND_FIELD
             self.buffer.flush()
 
+    def zero_length_delimited_handler(self):
+        self.parsed_data.append(
+            ParsedResult(
+                field=self.target_field,
+                wire_type="string",
+                data=""
+            )
+        )
+        self.state = State.FIND_FIELD
+        self.buffer.flush()
+
     def parse_length_delimited_handler(self, chunk):
         value = self.get_value(chunk)
         if self.has_next(chunk):
@@ -216,10 +227,10 @@ class Parser:
         else:
             self.buffer.append(value)
             data_length = self.get_buffered_value()
+            if data_length == 0:
+                return self.zero_length_delimited_handler()
             self.fetcher.set_data_length(data_length)
-
             self.state = State.GET_DELIMITED_DATA
-
             self.buffer.flush()
 
     def get_delimited_data_handler(self, chunk):
