@@ -220,11 +220,18 @@ def test_parser8():
         ParsedResult(field=1, wire_type="string", data='test2')
     ])
 
+
 def test_zero_string():
     test_target = "0a 00 10 ff ff 03 18 17"
     parsed_data = Parser().parse(test_target)
     assert parsed_data == ParsedResults([
-        ParsedResult(field=1, wire_type='string', data=''), 
-        ParsedResult(field=2, wire_type='varint', data=65535), 
+        ParsedResult(field=1, wire_type='string', data=''),
+        ParsedResult(field=2, wire_type='varint', data=65535),
         ParsedResult(field=3, wire_type='varint', data=23)
     ])
+
+
+def test_empty_string():
+    test_target = ""
+    parsed_data = Parser().parse(test_target)
+    assert parsed_data == ParsedResults([])
