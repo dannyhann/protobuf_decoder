@@ -221,7 +221,7 @@ def test_parser8():
     ])
 
 
-def test_zero_string():
+def test_zero_length_string():
     test_target = "0a 00 10 ff ff 03 18 17"
     parsed_data = Parser().parse(test_target)
     assert parsed_data == ParsedResults([
