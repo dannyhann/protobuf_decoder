@@ -28,6 +28,7 @@ Install using pip
     # binary
     0A 09 ED 85 8C EC 8A A4 ED 8A B8
 """
+from protobuf_decoder.protobuf_decoder import Parser
 
 test_target = "0A 09 ED 85 8C EC 8A A4 ED 8A B8"
 parsed_data = Parser().parse(test_target)
@@ -57,6 +58,8 @@ parsed_data = Parser().parse(test_target)
     # binary
     1a 03 08 96 01
 """
+from protobuf_decoder.protobuf_decoder import Parser
+
 test_target = "1a 03 08 96 01"
 parsed_data = Parser().parse(test_target)
 
@@ -80,6 +83,8 @@ parsed_data = Parser().parse(test_target)
     0A 03 E2 9C 8A
 
     """
+from protobuf_decoder.protobuf_decoder import Parser
+
 test_target = "0A 03 E2 9C 8A"
 parsed_data = Parser().parse(test_target)
 >> parsed_data
