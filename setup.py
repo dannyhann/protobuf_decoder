@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="protobuf_decoder",
-    version="0.0.3",
+    version="0.1.0",
     author="danny han",
     author_email="rhrnak0501@gmail.com",
     description="Decode protobuf without proto file",
@@ -18,5 +18,5 @@ setuptools.setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    python_requires='>=3.6',
+    python_requires='>=3.7',
 )
