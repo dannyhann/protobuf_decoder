@@ -1,5 +1,8 @@
+import struct
+
 import pytest
-from protobuf_decoder.protobuf_decoder import Utils, Parser, ParsedResult, ParsedResults
+import math
+from protobuf_decoder.protobuf_decoder import Utils, Parser, ParsedResult, ParsedResults, FixedBitsValue
 
 
 def test_binary_validate():
@@ -140,8 +143,11 @@ def test_parser4():
     test_target = "1a 03 08 96 01"
     parsed_data = Parser().parse(test_target)
     assert parsed_data == ParsedResults(
-        [ParsedResult(field=3, wire_type="length_delimited", data=ParsedResults(
-            [ParsedResult(field=1, wire_type="varint", data=150)]))])
+        [
+            ParsedResult(field=3, wire_type="length_delimited", data=ParsedResults([
+                ParsedResult(field=1, wire_type="varint", data=150)
+            ]))
+        ])
 
 
 def test_parser5():
@@ -235,3 +241,72 @@ def test_empty_string():
     test_target = ""
     parsed_data = Parser().parse(test_target)
     assert parsed_data == ParsedResults([])
+
+
+def test_FixedBitsValue():
+    value = FixedBitsValue(bit_value=10, bits=32)
+    assert value.int == 10
+    assert repr(value) == "Fixed32Value(int:10, float:1.401298464324817e-44)"
+
+    value = FixedBitsValue(bit_value=4294967146, bits=32)
+    assert value.int == -150
+    assert value.signed_int == -150
+    assert value.unsigned_int == 4294967146
+    assert repr(value) == "Fixed32Value(unsigned_int:4294967146, signed_int: -150, float:nan)"
+
+    value = FixedBitsValue(bit_value=4671105825815658496, bits=64)
+    assert type(value.value) == float
+    assert value.value == 19560.0
+    assert repr(value) == "Fixed64Value(int:4671105825815658496, double:19560.0)"
+
+
+def test_fixed32_value():
+    """
+        # proto
+        message Test1 {
+          repeated fixed32 a = 1;
+        }
+
+        # message
+        {
+          "a": 150
+        }
+
+        # binary
+        0D 96 00 00 00
+
+        """
+    test_target = "0D 96 00 00 00"
+    parsed_data = Parser().parse(test_target)
+    assert isinstance(parsed_data[0].data, FixedBitsValue)
+    assert parsed_data[0].wire_type == "fixed32"
+    assert parsed_data[0].data.signed_int == 150
+
+    assert isinstance(parsed_data[0].data.value, float)
+    assert parsed_data[0].data.value == 2.1019476964872256e-43
+
+
+def test_fixed32_minus_value():
+    """
+        # proto
+        message Test1 {
+          repeated fixed32 a = 1;
+        }
+
+        # message
+        {
+          "a": -150
+        }
+
+        # binary
+        0D 6A FF FF FF
+
+        """
+    test_target = "0D 6A FF FF FF"
+    parsed_data = Parser().parse(test_target)
+    assert isinstance(parsed_data[0].data, FixedBitsValue)
+    assert parsed_data[0].wire_type == "fixed32"
+    assert parsed_data[0].data.signed_int == -150
+
+    assert isinstance(parsed_data[0].data.value, float)
+    assert math.isnan(parsed_data[0].data.value)

@@ -1,26 +1,89 @@
 from __future__ import annotations
 import re
+import struct
+import ctypes
 from typing import List, Tuple, Union
 from enum import Enum
 import binascii
 from dataclasses import dataclass
 
 HEX_PATTERN = "^[\\0-9a-fA-F\\s]+$"
+ParsedDataType = Union[str, int, "FixedBitsValue", "ParsedResults"]
+
+
+class FixedBitsValue:
+    _is_unsigned: bool
+    _unsigned_int_value: int
+    _signed_int_value: int
+    _bits: int
+
+    _value_type: str
+
+    def __init__(self, bit_value: int, bits: int):
+        self._bit_value = bit_value
+        self._bits = bits
+        self._parse()
+
+    def _parse(self):
+        if self._bits == 64:
+            self._pack_fmt = "<q"
+            self._unpack_fmt = "d"
+            self._value_type = "double"
+            self._signed_int_value = ctypes.c_int64(self._bit_value).value
+            self._unsigned_int_value = ctypes.c_uint64(self._bit_value).value
+
+        elif self._bits == 32:
+            self._pack_fmt = "<l"
+            self._unpack_fmt = "f"
+            self._value_type = "float"
+            self._signed_int_value = ctypes.c_int32(self._bit_value).value
+            self._unsigned_int_value = ctypes.c_uint32(self._bit_value).value
+
+        else:
+            raise ValueError(f"Not Supported: {self._bits}bits")
+
+        if self._bit_value > 0 and self._signed_int_value == 0 and self._unsigned_int_value == 0:
+            raise ValueError(f"Invalid {self._bits} bits range: {self._bit_value}")
+
+        self._is_unsigned = not self._signed_int_value == self._unsigned_int_value
+
+    @property
+    def int(self):
+        return self._signed_int_value
+
+    @property
+    def unsigned_int(self):
+        return self._unsigned_int_value
+
+    @property
+    def signed_int(self):
+        return self._signed_int_value
+
+    @property
+    def value(self):
+        return struct.unpack(self._unpack_fmt, struct.pack(self._pack_fmt, self._signed_int_value))[0]
+
+    def __str__(self):
+        _name = f"Fixed{self._bits}Value"
+        _value = f"{self._value_type}:{self.value}"
+        if self._is_unsigned:
+            return f"{_name}(unsigned_int:{self._unsigned_int_value}, signed_int: {self._signed_int_value}, {_value})"
+        return f"{_name}(int:{self._unsigned_int_value}, {_value})"
+
+    def __repr__(self):
+        return self.__str__()
 
 
 @dataclass(init=False)
 class ParsedResult:
     field: int
     wire_type: str
-    data: Union[str, int, List[ParsedResult]]
+    data: ParsedDataType
 
-    def __init__(self, field: int, wire_type: str, data: Union[str, int, ParsedResults]):
+    def __init__(self, field: int, wire_type: str, data: ParsedDataType):
         self.field = field
         self.wire_type = wire_type
-        if isinstance(data, ParsedResults):
-            self.data = data.results
-        else:
-            self.data = data
+        self.data = data
 
     def to_dict(self):
         if isinstance(self.data, list):
@@ -43,6 +106,9 @@ class ParsedResults:
     def has_results(self):
         return len(self.results) > 0
 
+    def __getitem__(self, item):
+        return self.results[item]
+
 
 class State(Enum):
     FIND_FIELD = 1
@@ -51,16 +117,22 @@ class State(Enum):
     GET_DELIMITED_DATA = 4
     TERMINATED = 5
 
+    PARSE_BIT64 = 6
+    PARSE_BIT32 = 7
+
+    PARSE_START_GROUP = 8
+    PARSE_END_GROUP = 9
+
 
 class WireType(Enum):
     VARINT = 0
-    LENGTH_DELIMITED = 2
+    LEN = 2
 
-    BIT64 = 1  # not supported
-    BIT32 = 5  # not supported
+    I64 = 1
+    I32 = 5
 
-    START_GROUP = 3  # deprecated
-    END_GROUP = 4  # deprecated
+    SGROUP = 3  # deprecated
+    EGROUP = 4  # deprecated
 
 
 class Utils:
@@ -140,14 +212,32 @@ class Fetcher:
     def seek(self, index=0):
         self._fetch_index = index
 
+    @property
+    def fetching_count(self):
+        return self._fetch_index
+
+    @property
+    def fetching_bits(self):
+        return self.fetching_count * 8
+
+    def fetch_64bits(self):
+        self.set_data_length(8 + 1)
+
+    def fetch_32bits(self):
+        self.set_data_length(4 + 1)
+
 
 class Parser:
-    def __init__(self):
+    def __init__(self, nexted_depth: int = 0):
+        self._nested_depth = nexted_depth
         self._buffer = BytesBuffer()
         self._fetcher = Fetcher()
         self._target_field = None
         self._parsed_data: List[ParsedResult] = []
         self._state = State.FIND_FIELD
+
+    def _create_nested_parser(self) -> Parser:
+        return Parser(nexted_depth=self._nested_depth + 1)
 
     @staticmethod
     def _has_next(chunk_bytes) -> bool:
@@ -163,10 +253,10 @@ class Parser:
         field = chunk_bytes >> 3
         return wire_type, field
 
-    def _get_buffered_value(self) -> int:
+    def _get_buffered_value(self, mask=7) -> int:
         bit_value = 0
         for idx, byte_string in enumerate(self._buffer):
-            bit_value += byte_string << (7 * idx)
+            bit_value += byte_string << (mask * idx)
         return bit_value
 
     def _next_buffer_handler(self, value):
@@ -184,12 +274,18 @@ class Parser:
 
         if wire_type == WireType.VARINT.value:
             self._state = State.PARSE_VARINT
-        elif wire_type == WireType.LENGTH_DELIMITED.value:
+        elif wire_type == WireType.LEN.value:
             self._state = State.PARSE_LENGTH_DELIMITED
-        elif wire_type == WireType.END_GROUP.value:
+        elif wire_type == WireType.I64.value:
+            self._state = State.PARSE_BIT64
+        elif wire_type == WireType.I32.value:
+            self._state = State.PARSE_BIT32
+        elif wire_type == WireType.SGROUP.value:
+            self._state = State.PARSE_START_GROUP
+        elif wire_type == WireType.EGROUP.value:
+            self._state = State.PARSE_END_GROUP
+        elif wire_type == WireType.EGROUP.value:
             self._state = State.TERMINATED
-        elif wire_type in (WireType.BIT32.value, WireType.BIT64.value, WireType.START_GROUP.value):
-            raise ValueError(f"Unsupported wire type {wire_type}")
         else:
             self._state = State.TERMINATED
         self._buffer.flush()
@@ -211,6 +307,26 @@ class Parser:
 
         self._state = State.FIND_FIELD
         self._buffer.flush()
+
+    def _parse_fixed_handler(self, chunk):
+        self._next_buffer_handler(chunk)
+        self._fetcher.fetch()
+
+        if not self._fetcher.has_next:
+            bits = self._fetcher.fetching_bits
+            int_value = self._get_buffered_value(mask=8)
+
+            self._parsed_data.append(
+                ParsedResult(
+                    field=self._target_field,
+                    wire_type=f"fixed{bits}",
+                    data=FixedBitsValue(bit_value=int_value, bits=bits)
+                )
+            )
+
+            self._state = State.FIND_FIELD
+            self._buffer.flush()
+            self._fetcher.seek()
 
     def _zero_length_delimited_handler(self):
         self._parsed_data.append(
@@ -248,7 +364,7 @@ class Parser:
 
         self._buffer.append(value)
         data = list(map(lambda x: hex(x)[2:].zfill(2), self._buffer))
-        sub_parsed_data = Parser().parse(" ".join(data))
+        sub_parsed_data = self._create_nested_parser().parse(" ".join(data))
         if sub_parsed_data.has_results:
             data = sub_parsed_data
             wire_type = "length_delimited"
@@ -278,8 +394,8 @@ class Parser:
         if not is_valid:
             raise ValueError("Invalid hex format")
 
-        for chunk in Utils.get_chunked_list(validate_string):
-            chunk = Utils.hex_string_to_decimal(chunk)
+        for hex_chunk in Utils.get_chunked_list(validate_string):
+            chunk = Utils.hex_string_to_decimal(hex_chunk)
 
             if self._state == State.FIND_FIELD:
                 self._handler_find_field(chunk)
@@ -292,6 +408,17 @@ class Parser:
 
             elif self._state == State.GET_DELIMITED_DATA:
                 self._get_delimited_data_handler(chunk)
+
+            elif self._state == State.PARSE_BIT64:
+                self._fetcher.fetch_64bits()
+                self._parse_fixed_handler(chunk)
+
+            elif self._state == State.PARSE_BIT32:
+                self._fetcher.fetch_32bits()
+                self._parse_fixed_handler(chunk)
+
+            elif self._state in (State.PARSE_START_GROUP, State.PARSE_END_GROUP):
+                continue
 
             elif self._state == State.TERMINATED:
                 return self._create_parsed_results()
