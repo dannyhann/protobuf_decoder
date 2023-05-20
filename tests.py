@@ -5,6 +5,16 @@ import math
 from protobuf_decoder.protobuf_decoder import Utils, Parser, ParsedResult, ParsedResults, FixedBitsValue
 
 
+def show_parsed_results(parsed_results: ParsedResults, depth=0):
+    if parsed_results.has_results:
+        for result in parsed_results.results:
+            if isinstance(result.data, ParsedResults):
+                print("\t" * depth, f"[{result.field}: {result.wire_type}] =>")
+                show_parsed_results(result.data, depth + 1)
+            else:
+                print("\t" * depth, f"[{result.field}: {result.wire_type}] => {result.data}")
+
+
 def test_binary_validate():
     is_valid, _ = Utils.validate("08 12")
     assert is_valid is True

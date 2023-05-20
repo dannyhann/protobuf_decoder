@@ -136,9 +136,15 @@ class WireType(Enum):
 
 
 class Utils:
+
+    @classmethod
+    def sanitize_input(cls, string: str) -> str:
+        return string.replace("\n", " ")
+
     @classmethod
     def validate(cls, string: str) -> Tuple[bool, str]:
         regex_validator = re.compile(HEX_PATTERN)
+        string = cls.sanitize_input(string)
         validate_result = regex_validator.match(string)
         if validate_result is None:
             return False, string
@@ -364,13 +370,14 @@ class Parser:
 
         self._buffer.append(value)
         data = list(map(lambda x: hex(x)[2:].zfill(2), self._buffer))
-        sub_parsed_data = self._create_nested_parser().parse(" ".join(data))
-        if sub_parsed_data.has_results:
-            data = sub_parsed_data
-            wire_type = "length_delimited"
-        else:
+
+        try:
             data = Utils.hex_string_to_utf8("".join(data))
             wire_type = "string"
+        except UnicodeDecodeError:
+            sub_parsed_data = self._create_nested_parser().parse(" ".join(data))
+            data = sub_parsed_data
+            wire_type = "length_delimited"
 
         self._parsed_data.append(
             ParsedResult(
