@@ -320,3 +320,27 @@ def test_fixed32_minus_value():
 
     assert isinstance(parsed_data[0].data.value, float)
     assert math.isnan(parsed_data[0].data.value)
+
+
+def test_fixed64_value():
+    """
+        # proto
+        message Test1 {
+          repeated fixed64 a = 4;
+        }
+
+        # message
+        {
+          "a": 224301697723724
+        }
+
+        # binary
+        21 4C ED 03 4F 00 CC 00 00
+
+        """
+    test_target = "21 4C ED 03 4F 00 CC 00 00"
+    parsed_data = Parser().parse(test_target)
+    assert isinstance(parsed_data[0].data, FixedBitsValue)
+    assert parsed_data[0].wire_type == "fixed64"
+    assert parsed_data[0].data.signed_int == 224301697723724
+    assert parsed_data[0].data.value == 1.1081976314916e-309
