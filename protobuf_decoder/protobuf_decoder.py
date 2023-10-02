@@ -370,14 +370,22 @@ class Parser:
 
         self._buffer.append(value)
         data = list(map(lambda x: hex(x)[2:].zfill(2), self._buffer))
-
+       
+        wire_type, field = self._parse_wire_type(int(data[0], 16))
+        
+        _data = None
         try:
-            data = Utils.hex_string_to_utf8("".join(data))
-            wire_type = "string"
+            _data = Utils.hex_string_to_utf8("".join(data))
         except UnicodeDecodeError:
+            pass
+        
+        if not _data or (wire_type < 6 and field == 1):
             sub_parsed_data = self._create_nested_parser().parse(" ".join(data))
             data = sub_parsed_data
             wire_type = "length_delimited"
+        else:
+            data = _data
+            wire_type = "string"
 
         self._parsed_data.append(
             ParsedResult(
