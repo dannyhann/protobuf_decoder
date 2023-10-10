@@ -371,9 +371,6 @@ class Parser:
         self._buffer.append(value)
         data = list(map(lambda x: hex(x)[2:].zfill(2), self._buffer))
        
-        _parser = self._create_nested_parser()
-        sub_parsed_data = _parser.parse(" ".join(data))
-
         _data = None
         try:
             _data = Utils.hex_string_to_utf8("".join(data))
@@ -381,7 +378,14 @@ class Parser:
         except UnicodeDecodeError:
             pass
 
-        if not _data or (_data and not _data.isprintable()):
+        escaped = 1 if _data and ord(_data[0]) <= 0x20 else 0
+        if _data:
+            for c in _data[1:4]:
+                if ord(c) < 0x20:
+                    escaped += 1
+
+        if not _data or escaped > 0:
+            sub_parsed_data = self._create_nested_parser().parse(" ".join(data))
             data = sub_parsed_data
             wire_type = "length_delimited"
         else:
