@@ -91,5 +91,25 @@ parsed_data = Parser().parse(test_target)
 >> [ParsedResult(field=1, wire_type="string", data='✊')]
 ```
 
+# Nested Protobuf Detection Logic
+Our project implements a distinct method to determine whether a given input is possibly a nested protobuf. 
+The core of this logic is the `is_maybe_nested_protobuf` function. 
+We recently enhanced this function to provide a more accurate distinction and handle nested protobufs effectively.
+
+### Current Logic
+The `is_maybe_nested_protobuf` function works by:
+
+- Attempting to convert the given hex string to UTF-8.
+- Checking the ordinal values of the first four characters of the converted data.
+- Returning `True` if the data might be a nested protobuf based on certain conditions, otherwise returning False.
+
+### Extensibility
+You can extend or modify the `is_maybe_nested_protobuf` function based on your specific requirements or use-cases. 
+If you find a scenario where the current logic can be further improved, 
+feel free to adapt the function accordingly.
+
+(A big shoutout to **@fuzzyrichie** for their significant contributions to this update!)
+
+
 # Reference
 - [Google protocol-buffers encoding document](https://developers.google.com/protocol-buffers/docs/encoding)
