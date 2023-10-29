@@ -363,6 +363,35 @@ class Parser:
         self._fetcher.fetch()
         self._buffer.append(value)
 
+    @staticmethod
+    def is_maybe_nested_protobuf(string_or_not) -> bool:
+        """
+        Determine if the given input might be a nested protobuf.
+
+        Args:
+            string_or_not (str): Input string or data to be checked.
+
+        Returns:
+            bool: True if the input is likely a nested protobuf, otherwise False.
+        """
+
+        # Try to convert the input hex string to UTF-8
+        try:
+            _data = Utils.hex_string_to_utf8(string_or_not)
+        except UnicodeDecodeError:
+            # If a UnicodeDecodeError occurs, it's possibly a nested protobuf
+            return True
+
+        # Check the first 4 characters of the decoded data
+        for c in _data[0:4]:
+            # If any character has an ordinal value less than 0x20,
+            # it's possibly a nested protobuf
+            if ord(c) < 0x20:
+                return True
+
+        # If none of the above conditions were met, it's likely not a nested protobuf
+        return False
+
     def _get_delimited_data_handler(self, chunk):
         value = chunk
         if self._fetcher.has_next:
@@ -370,26 +399,14 @@ class Parser:
 
         self._buffer.append(value)
         data = list(map(lambda x: hex(x)[2:].zfill(2), self._buffer))
-       
-        _data = None
-        try:
-            _data = Utils.hex_string_to_utf8("".join(data))
-            wire_type = "string"
-        except UnicodeDecodeError:
-            pass
 
-        escaped = 1 if _data and ord(_data[0]) <= 0x20 else 0
-        if _data:
-            for c in _data[1:4]:
-                if ord(c) < 0x20:
-                    escaped += 1
-
-        if not _data or escaped > 0:
-            sub_parsed_data = self._create_nested_parser().parse(" ".join(data))
-            data = sub_parsed_data
+        string_or_not = "".join(data)
+        if self.is_maybe_nested_protobuf(string_or_not):
+            data = self._create_nested_parser().parse(string_or_not)
             wire_type = "length_delimited"
         else:
-            data = _data
+            data = Utils.hex_string_to_utf8(string_or_not)
+            wire_type = "string"
 
         self._parsed_data.append(
             ParsedResult(
