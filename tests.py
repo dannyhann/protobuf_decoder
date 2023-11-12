@@ -3,16 +3,6 @@ import math
 from protobuf_decoder.protobuf_decoder import Utils, Parser, ParsedResult, ParsedResults, FixedBitsValue
 
 
-def show_parsed_results(parsed_results: ParsedResults, depth=0):
-    if parsed_results.has_results:
-        for result in parsed_results.results:
-            if isinstance(result.data, ParsedResults):
-                print("\t" * depth, f"[{result.field}: {result.wire_type}] =>")
-                show_parsed_results(result.data, depth + 1)
-            else:
-                print("\t" * depth, f"[{result.field}: {result.wire_type}] => {result.data}")
-
-
 def test_binary_validate():
     is_valid, _ = Utils.validate("08 12")
     assert is_valid is True
@@ -25,6 +15,16 @@ def test_binary_validate():
 
     is_valid, _ = Utils.validate("081H")
     assert is_valid is False
+
+
+def test_change_endian():
+    try:
+        Utils.change_endian("081H")
+    except ValueError:
+        assert True
+    assert Utils.change_endian("0812") == "12 08"
+    assert Utils.change_endian("08 12 12") == "12 08 12"
+    assert Utils.change_endian("08 1212 32") == "12 08 32 12"
 
 
 def test_get_chunked_list():
@@ -191,8 +191,12 @@ def test_parser6():
     """
     test_target = " ".join(['ed', '85', '8c', 'ec', '8a', 'a4', 'ed', '8a', 'b8'])
     parsed_data = Parser().parse(test_target)
+
     assert parsed_data.has_results is False
-    assert parsed_data.to_dict() == {'results': []}
+
+    assert parsed_data.to_dict() == {'results': [], 'remain_data': 'ed 85 8c ec 8a a4 ed 8a b8', }
+    assert parsed_data.has_remain_data is True
+    assert parsed_data.remain_data == "ed 85 8c ec 8a a4 ed 8a b8"
 
 
 def test_parser7():
@@ -234,6 +238,7 @@ def test_parser8():
 
     # binary
     0A 04 74 65 73 74 0A 05 74 65 73 74 32
+    0A 04 74 65 73 74 0A 05 74 65 73 74 32 12 01 61 12 01 62
 
     """
     test_target = "0A 04 74 65 73 74 0A 05 74 65 73 74 32"
@@ -1905,3 +1910,61 @@ def test_inner_protobuf_8():
                                                                                ParsedResult(field=2, wire_type='varint',
                                                                                             data=1)])),
                                                               ParsedResult(field=12, wire_type='varint', data=0)]))])
+
+
+def test_strict_protobuf_1():
+    test_target = "02 04 74 65 73 74 02 05 74 65 73 74 32 00 00 00 00 0d 1d"
+    try:
+        Parser(strict=True).parse(test_target)
+    except AssertionError as error:
+        assert "parsing process is not done" in str(error)
+    else:
+        assert False
+
+
+def test_strict_protobuf_2():
+    test_target = "800000000f677270632d7374617475733a300d"
+    try:
+        Parser(strict=True).parse(test_target)
+    except AssertionError as error:
+        assert "Invalid wire_type: 7" in str(error)
+    else:
+        assert False
+
+
+def test_remain_protobuf_1():
+    test_target = "02 04 74 65 73 74 02 05 74 65 73 74 32 00 00 00 00 0d 1d"
+    parsed_data = Parser().parse(test_target)
+    assert parsed_data.has_remain_data
+    assert parsed_data.remain_data == '0d 1d'
+    assert parsed_data == ParsedResults(
+        results=[
+            ParsedResult(field=0, wire_type='string', data='test'),
+            ParsedResult(field=0, wire_type='string', data='test2'),
+            ParsedResult(field=0, wire_type='varint', data=0),
+            ParsedResult(field=0, wire_type='varint', data=0)
+        ], remain_data='0d 1d'
+    )
+    assert parsed_data.to_dict() == {'remain_data': '0d 1d',
+                                     'results': [{'data': 'test', 'field': 0, 'wire_type': 'string'},
+                                                 {'data': 'test2', 'field': 0, 'wire_type': 'string'},
+                                                 {'data': 0, 'field': 0, 'wire_type': 'varint'},
+                                                 {'data': 0, 'field': 0, 'wire_type': 'varint'}]}
+
+
+def test_remain_protobuf_2():
+    test_target = "800000000f677270632d7374617475733a300d"
+    parsed_data = Parser(strict=False).parse(test_target)
+    assert parsed_data.has_remain_data
+    assert parsed_data.remain_data == '67 72 70 63 2d 73 74 61 74 75 73 3a 30 0d'
+
+    assert parsed_data == ParsedResults(
+        results=[
+            ParsedResult(field=0, wire_type='varint', data=0),
+            ParsedResult(field=0, wire_type='varint', data=15)
+        ],
+        remain_data='67 72 70 63 2d 73 74 61 74 75 73 3a 30 0d'
+    )
+    assert parsed_data.to_dict() == {'remain_data': '67 72 70 63 2d 73 74 61 74 75 73 3a 30 0d',
+                                     'results': [{'data': 0, 'field': 0, 'wire_type': 'varint'},
+                                                 {'data': 15, 'field': 0, 'wire_type': 'varint'}]}
