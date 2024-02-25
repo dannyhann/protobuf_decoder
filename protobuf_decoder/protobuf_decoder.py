@@ -73,6 +73,19 @@ class FixedBitsValue:
     def __repr__(self):
         return self.__str__()
 
+    def to_dict(self):
+        dict_result = dict(
+            value=self.value,
+            signed_int=self.signed_int,
+            unsigned_int=self.unsigned_int,
+            value_type=self._value_type,
+        )
+
+        if not self._is_unsigned:
+            dict_result.pop("unsigned_int")
+
+        return dict_result
+
 
 @dataclass(init=False)
 class ParsedResult:
@@ -86,8 +99,10 @@ class ParsedResult:
         self.data = data
 
     def to_dict(self):
-        if isinstance(self.data, list):
-            data = [sub_result.to_dict() for sub_result in self.data]
+        if isinstance(self.data, ParsedResults):
+            data = self.data.to_dict()
+        elif isinstance(self.data, FixedBitsValue):
+            data = self.data.to_dict()
         else:
             data = self.data
 
@@ -108,6 +123,12 @@ class ParsedResults:
 
     def __getitem__(self, item):
         return self.results[item]
+
+    def to_dict(self):
+        results = [result.to_dict() for result in self.results]
+        return dict(
+            results=results,
+        )
 
 
 class State(Enum):
