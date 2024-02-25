@@ -73,6 +73,19 @@ class FixedBitsValue:
     def __repr__(self):
         return self.__str__()
 
+    def to_dict(self):
+        dict_result = dict(
+            value=self.value,
+            signed_int=self.signed_int,
+            unsigned_int=self.unsigned_int,
+            value_type=self._value_type,
+        )
+
+        if not self._is_unsigned:
+            dict_result.pop("unsigned_int")
+
+        return dict_result
+
 
 @dataclass(init=False)
 class ParsedResult:
@@ -86,8 +99,10 @@ class ParsedResult:
         self.data = data
 
     def to_dict(self):
-        if isinstance(self.data, list):
-            data = [sub_result.to_dict() for sub_result in self.data]
+        if isinstance(self.data, ParsedResults):
+            data = self.data.to_dict()
+        elif isinstance(self.data, FixedBitsValue):
+            data = self.data.to_dict()
         else:
             data = self.data
 
@@ -101,13 +116,28 @@ class ParsedResult:
 @dataclass
 class ParsedResults:
     results: List[ParsedResult]
+    remain_data: str = None
 
     @property
     def has_results(self):
         return len(self.results) > 0
 
+    @property
+    def has_remain_data(self):
+        return self.remain_data is not None
+
     def __getitem__(self, item):
         return self.results[item]
+
+    def to_dict(self):
+        results = [result.to_dict() for result in self.results]
+        dict_results = dict(
+            results=results,
+        )
+        if self.has_remain_data:
+            dict_results["remain_data"] = self.remain_data
+
+        return dict_results
 
 
 class State(Enum):
@@ -176,6 +206,44 @@ class Utils:
         string = string.replace(" ", "")
         return binascii.unhexlify(string).decode("utf-8")
 
+    @classmethod
+    def chunk_to_hex_string(cls, chunk) -> str:
+        return hex(chunk)[2:].zfill(2)
+
+    @classmethod
+    def change_endian(cls, string) -> str:
+        is_valid, valid_string = cls.validate(string)
+        if not is_valid:
+            raise ValueError("Invalid hex format")
+
+        _output = []
+
+        _chunk_buffer = []
+        for chunk in cls.get_chunked_list(valid_string):
+            _chunk_buffer.append(chunk)
+            if len(_chunk_buffer) == 2:
+                _chunk_buffer.reverse()
+                for _chunk in _chunk_buffer:
+                    _output.append(_chunk)
+                _chunk_buffer = []
+
+        for _chunk in _chunk_buffer:
+            _output.append(_chunk)
+
+        return " ".join(_output)
+
+    @classmethod
+    def show_parsed_results(cls, parsed_results: ParsedResults, depth=0, print_func=print):
+        if parsed_results.has_results:
+            for result in parsed_results.results:
+                if isinstance(result.data, ParsedResults):
+                    print_func("\t" * depth, f"[{result.field}: {result.wire_type}] =>")
+                    cls.show_parsed_results(result.data, depth + 1)
+                else:
+                    print_func("\t" * depth, f"[{result.field}: {result.wire_type}] => {result.data}")
+        if parsed_results.has_remain_data:
+            print_func("\t" * depth, f"left over bytes: {parsed_results.remain_data}")
+
 
 class BytesBuffer:
     def __init__(self):
@@ -233,17 +301,57 @@ class Fetcher:
         self.set_data_length(4 + 1)
 
 
+class RemainChunkTransaction:
+    def __init__(self):
+        self._is_done = True
+        self._remain_hex_string_list = []
+
+    def consume_chunk(self, chunk):
+        self._remain_hex_string_list.append(
+            Utils.chunk_to_hex_string(chunk)
+        )
+
+    def flush_chunk(self):
+        self._remain_hex_string_list = []
+
+    def start(self):
+        self._is_done = False
+
+    def done(self):
+        self._is_done = True
+        self.flush_chunk()
+
+    @property
+    def is_done(self):
+        return self._is_done
+
+    @property
+    def remain_hex_string_list(self):
+        return self._remain_hex_string_list
+
+    @property
+    def remain_hex_string(self):
+        return " ".join(self._remain_hex_string_list)
+
+    @property
+    def has_remain_data(self):
+        return len(self._remain_hex_string_list) > 0
+
+
 class Parser:
-    def __init__(self, nexted_depth: int = 0):
+    def __init__(self, nexted_depth: int = 0, strict: bool = False):
         self._nested_depth = nexted_depth
         self._buffer = BytesBuffer()
         self._fetcher = Fetcher()
         self._target_field = None
         self._parsed_data: List[ParsedResult] = []
         self._state = State.FIND_FIELD
+        self._is_strict = strict
+
+        self._t = RemainChunkTransaction()
 
     def _create_nested_parser(self) -> Parser:
-        return Parser(nexted_depth=self._nested_depth + 1)
+        return Parser(nexted_depth=self._nested_depth + 1, strict=self._is_strict)
 
     @staticmethod
     def _has_next(chunk_bytes) -> bool:
@@ -273,6 +381,8 @@ class Parser:
         if self._has_next(chunk):
             return self._next_buffer_handler(value)
 
+        self._t.start()
+
         self._buffer.append(value)
         bit_value = self._get_buffered_value()
         wire_type, field = self._parse_wire_type(bit_value)
@@ -293,7 +403,10 @@ class Parser:
         elif wire_type == WireType.EGROUP.value:
             self._state = State.TERMINATED
         else:
+            if self._is_strict:
+                raise AssertionError(f"Invalid wire_type: {wire_type}")
             self._state = State.TERMINATED
+
         self._buffer.flush()
 
     def _parse_varint_handler(self, chunk):
@@ -313,6 +426,7 @@ class Parser:
 
         self._state = State.FIND_FIELD
         self._buffer.flush()
+        self._t.done()
 
     def _parse_fixed_handler(self, chunk):
         self._next_buffer_handler(chunk)
@@ -333,6 +447,7 @@ class Parser:
             self._state = State.FIND_FIELD
             self._buffer.flush()
             self._fetcher.seek()
+            self._t.done()
 
     def _zero_length_delimited_handler(self):
         self._parsed_data.append(
@@ -344,6 +459,7 @@ class Parser:
         )
         self._state = State.FIND_FIELD
         self._buffer.flush()
+        self._t.done()
 
     def _parse_length_delimited_handler(self, chunk):
         value = self._get_value(chunk)
@@ -358,6 +474,7 @@ class Parser:
         self._fetcher.set_data_length(data_length)
         self._state = State.GET_DELIMITED_DATA
         self._buffer.flush()
+        self._t.done()
 
     def _next_get_delimited_data_handler(self, value):
         self._fetcher.fetch()
@@ -418,9 +535,16 @@ class Parser:
         self._buffer.flush()
         self._fetcher.seek()
         self._state = State.FIND_FIELD
+        self._t.done()
 
     def _create_parsed_results(self) -> ParsedResults:
-        return ParsedResults(results=self._parsed_data)
+        if not self._t.has_remain_data:
+            return ParsedResults(results=self._parsed_data)
+
+        return ParsedResults(
+            results=self._parsed_data,
+            remain_data=self._t.remain_hex_string
+        )
 
     def parse(self, test_target) -> ParsedResults:
         if test_target == "":
@@ -432,6 +556,8 @@ class Parser:
 
         for hex_chunk in Utils.get_chunked_list(validate_string):
             chunk = Utils.hex_string_to_decimal(hex_chunk)
+
+            self._t.consume_chunk(chunk)
 
             if self._state == State.FIND_FIELD:
                 self._handler_find_field(chunk)
@@ -457,8 +583,12 @@ class Parser:
                 continue
 
             elif self._state == State.TERMINATED:
-                return self._create_parsed_results()
+                pass
+
             else:
                 raise ValueError(f"Unsupported State {self._state}")
+
+        if self._is_strict:
+            assert self._t.is_done, "parsing process is not done, Maybe invalid protobuf"
 
         return self._create_parsed_results()
