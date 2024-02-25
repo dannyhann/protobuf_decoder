@@ -2,6 +2,8 @@
 omit =
     venv/*
     bin/*
+    build/*
+    dist/*
     .pytest_cache/*
     LICENSE
     README.md
